@@ -12,14 +12,13 @@ interface Billable {
   durWeek: number;
   createdAt: Date;
   dueAt: Date;
-
-  amountPaid: number;
 }
 
 interface Payment {
   ID: string;
   billableID: string;
   amount: number;
+  amountAccumulated: number;
   paidAt: Date;
   createdAt: Date;
 }
@@ -30,8 +29,6 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
 
   const makeBillable = (data: { bID: string; principal: number }): Billable => {
     const { bID, principal } = data;
-
-    // TODO: validate
 
     // validate existing bID
     if (billables.find((x) => x.ID == bID)) throw new Error("duplicate billable id");
@@ -51,11 +48,9 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
       durWeek: DEFAULT_LOAN_DURATION_WEEK,
       createdAt: timestamp,
       dueAt: dueDate,
-
-      amountPaid: 0,
     };
 
-    billables.push(b);
+    billables.unshift(b);
 
     return b;
   };
@@ -67,7 +62,10 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
 
-    const out = { principal: b.principal, bill: b.amount, paid: b.amountPaid, outstanding: b.amount - b.amountPaid };
+    const p = payments.find((x) => x.billableID == bID);
+    const amountPaid = p?.amountAccumulated || 0;
+
+    const out = { principal: b.principal, bill: b.amount, paid: amountPaid, outstanding: b.amount - amountPaid };
 
     return out;
   };
@@ -83,7 +81,9 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
     const weeklyBill = b.amount / b.durWeek;
-    const amountPaid = b.amountPaid;
+
+    const p = payments.find((x) => x.billableID == bID);
+    const amountPaid = p?.amountAccumulated || 0;
 
     const billableAgeWeek = getWeeksSinceDate(b.createdAt);
     const expectedAggrAmountPaid = (b.amount / b.durWeek) * billableAgeWeek;
@@ -100,9 +100,10 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
 
-    // TODO: wrap in transaction
-    payments.push({ ID: xid.next(), billableID: bID, amount, paidAt, createdAt: timestamp });
-    b.amountPaid = b.amountPaid + amount;
+    const p = payments.find((x) => x.billableID == bID);
+    const amountPaid = p?.amountAccumulated || 0;
+
+    payments.unshift({ ID: xid.next(), billableID: bID, amount, paidAt, createdAt: timestamp, amountAccumulated: amountPaid + amount });
   };
 
   return {

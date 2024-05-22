@@ -28,16 +28,21 @@ describe("BillingEngine", () => {
 
     // skip two week, check for delinquency: ok
     // skip one week, pay, skip one week, check for delinquency: ok
-    console.log(timestamp.toDate());
+    // console.log(timestamp.toDate());
     let curdate = dayjs(timestamp);
 
+    curdate = timestamp.add(7, "day");
+    // console.log(curdate.toDate());
+    getCurrentDate.mockImplementationOnce(() => curdate.toDate());
+    be.makePayment(b2.ID, { amount: (billingengine.DEFAULT_LOAN_AMOUNT * 1.1) / 50, paidAt: curdate.toDate() });
+
     curdate = timestamp.add(14, "day");
-    console.log(curdate.toDate());
+    // console.log(curdate.toDate());
     getCurrentDate.mockImplementationOnce(() => curdate.toDate());
     be.makePayment(b2.ID, { amount: (billingengine.DEFAULT_LOAN_AMOUNT * 1.1) / 50, paidAt: curdate.toDate() });
 
     curdate = timestamp.add(21, "day");
-    console.log(curdate.toDate());
+    // console.log(curdate.toDate());
     getCurrentDate.mockImplementationOnce(() => curdate.toDate());
     console.log(be.getOutstanding(b2.ID));
     console.log(be.isDelinquent(b2.ID));
