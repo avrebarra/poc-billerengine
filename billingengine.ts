@@ -12,6 +12,8 @@ interface Billable {
   durWeek: number;
   createdAt: Date;
   dueAt: Date;
+
+  amountPaid: number;
 }
 
 interface Payment {
@@ -42,14 +44,17 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     dueDate.setDate(dueDate.getDate() + DEFAULT_LOAN_DURATION_WEEK * 7);
 
     // make and push billable
-    const b = {
+    const b: Billable = {
       ID: bID,
       principal: principal,
       amount: amount,
       durWeek: DEFAULT_LOAN_DURATION_WEEK,
       createdAt: timestamp,
       dueAt: dueDate,
+
+      amountPaid: 0,
     };
+
     billables.push(b);
 
     return b;
@@ -62,11 +67,7 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
 
-    // aggregate amount // TODO: heavy query, improve data efficiency
-    const ps = payments.filter((x) => x.billableID == b.ID);
-    const amountPaid = ps.reduce((prev, cur) => prev + cur.amount, 0);
-
-    const out = { principal: b.principal, bill: b.amount, paid: amountPaid, outstanding: b.amount - amountPaid };
+    const out = { principal: b.principal, bill: b.amount, paid: b.amountPaid, outstanding: b.amount - b.amountPaid };
 
     return out;
   };
@@ -98,7 +99,13 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
   const makePayment = (bID: string, data: { amount: number; paidAt: Date }) => {
     const { amount, paidAt } = data;
     const timestamp = deps.getCurrentDate();
+
+    const b = billables.find((x) => x.ID == bID);
+    if (!b) throw new Error(`billable not found: id ${bID}`);
+
+    // TODO: wrap in transaction
     payments.push({ ID: xid.next(), billableID: bID, amount, paidAt, createdAt: timestamp });
+    b.amountPaid = b.amountPaid + amount;
   };
 
   return {
