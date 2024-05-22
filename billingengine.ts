@@ -83,10 +83,7 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
     const weeklyBill = b.amount / b.durWeek;
-
-    // aggregate amount // TODO: heavy query, improve data efficiency
-    const ps = payments.filter((x) => x.billableID == b.ID);
-    const amountPaid = ps.reduce((prev, cur) => prev + cur.amount, 0);
+    const amountPaid = b.amountPaid;
 
     const billableAgeWeek = getWeeksSinceDate(b.createdAt);
     const expectedAggrAmountPaid = (b.amount / b.durWeek) * billableAgeWeek;
