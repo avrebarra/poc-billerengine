@@ -1,7 +1,7 @@
 import xid from "xid-js";
 
 export const DEFAULT_LOAN_AMOUNT = 5_000_000;
-export const DEFAULT_LOAN_DURATION_WEEK = 50;
+export const DEFAULT_LOAN_DURATION_WEEKS = 50;
 export const DEFAULT_INTEREST_RATE_PERCENTAGE = 10;
 export const DELIQUENCY_PAYMENT_SKIP_THRESHOLD = 2; // how many times payment have to be skipped to be categorized as late
 
@@ -28,6 +28,8 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
   const payments: Payment[] = [];
 
   const makeBillable = (data: { bID: string; principal: number }): Billable => {
+    // TODO: validate required inputs
+
     const { bID, principal } = data;
 
     // validate existing bID
@@ -38,14 +40,14 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
 
     // determine due date
     const dueDate = new Date(timestamp);
-    dueDate.setDate(dueDate.getDate() + DEFAULT_LOAN_DURATION_WEEK * 7);
+    dueDate.setDate(dueDate.getDate() + DEFAULT_LOAN_DURATION_WEEKS * 7);
 
     // make and push billable
     const b: Billable = {
       ID: bID,
       principal: principal,
       amount: amount,
-      durWeek: DEFAULT_LOAN_DURATION_WEEK,
+      durWeek: DEFAULT_LOAN_DURATION_WEEKS,
       createdAt: timestamp,
       dueAt: dueDate,
     };
@@ -59,6 +61,8 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
   const getPayments = () => payments;
 
   const getOutstanding = (bID: string) => {
+    // TODO: validate required inputs
+
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
 
@@ -94,11 +98,16 @@ export const BillingEngine = (deps: { getCurrentDate: () => Date }) => {
   };
 
   const makePayment = (bID: string, data: { amount: number; paidAt: Date }) => {
+    // TODO: validate required inputs
+
     const { amount, paidAt } = data;
     const timestamp = deps.getCurrentDate();
 
     const b = billables.find((x) => x.ID == bID);
     if (!b) throw new Error(`billable not found: id ${bID}`);
+
+    // validate amount
+    if (amount != b.amount / b.durWeek) throw new Error(`wrong payment amount increment`);
 
     const p = payments.find((x) => x.billableID == bID);
     const amountPaid = p?.amountAccumulated || 0;
