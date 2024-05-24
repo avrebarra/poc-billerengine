@@ -18,4 +18,4 @@ CREATE TABLE IF NOT EXISTS payments (
 );
 
 CREATE INDEX IF NOT EXISTS idx_billable_id ON payments (billable_id);
-CREATE INDEX IF NOT EXISTS idx_payment_billable_id_paid_at_desc ON payments (billable_id, paid_at DESC);
+CREATE INDEX IF NOT EXISTS idx_payment_billable_id_paid_at_desc ON payments (billable_id, created_at DESC, paid_at DESC);

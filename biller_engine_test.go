@@ -56,9 +56,9 @@ func TestNewBillerEngine(t *testing.T) {
 			Storage:             db,
 			GenerateCurrentDate: func() time.Time { return time.Now() },
 
-			DefaultLoanDurationWeeks:       50,
-			DefaultInterestRatePercentage:  .1,
-			DeliquencyPaymentSkipThreshold: 2,
+			DefaultLoanDurationWeeks:            50,
+			DefaultInterestRatePercentage:       .1,
+			PaymentSkipCountDeliquencyThreshold: 2,
 		})
 
 		// assert
@@ -76,9 +76,9 @@ func TestNewBillerEngine(t *testing.T) {
 			// Storage:                        db,
 			GenerateCurrentDate: func() time.Time { return time.Now() },
 
-			DefaultLoanDurationWeeks:       50,
-			DefaultInterestRatePercentage:  .1,
-			DeliquencyPaymentSkipThreshold: 2,
+			DefaultLoanDurationWeeks:            50,
+			DefaultInterestRatePercentage:       .1,
+			PaymentSkipCountDeliquencyThreshold: 2,
 		})
 
 		// assert
@@ -95,9 +95,9 @@ func TestBillerEngine_MakeBillable(t *testing.T) {
 		Storage:             db,
 		GenerateCurrentDate: func() time.Time { return time.Now() },
 
-		DefaultLoanDurationWeeks:       50,
-		DefaultInterestRatePercentage:  .1,
-		DeliquencyPaymentSkipThreshold: 2,
+		DefaultLoanDurationWeeks:            50,
+		DefaultInterestRatePercentage:       .1,
+		PaymentSkipCountDeliquencyThreshold: 2,
 	})
 	require.NoError(t, err)
 
@@ -120,7 +120,7 @@ func TestBillerEngine_MakeBillable(t *testing.T) {
 		err = db.QueryRow(query).Scan(&count)
 
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
+		assert.Equal(t, 1, count)
 	})
 
 	t.Run("invalid_input", func(t *testing.T) {
@@ -140,7 +140,7 @@ func TestBillerEngine_MakeBillable(t *testing.T) {
 		err = db.QueryRow(query).Scan(&count)
 
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
+		assert.Equal(t, 1, count)
 	})
 
 	t.Run("duplicate_id", func(t *testing.T) {
@@ -160,101 +160,97 @@ func TestBillerEngine_MakeBillable(t *testing.T) {
 		err = db.QueryRow(query).Scan(&count)
 
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
+		assert.Equal(t, 1, count)
 	})
 }
 
-func TestBillerEngine_GetOutstanding(t *testing.T) {
-
-}
-
-func TestBillerEngine_MakePayment(t *testing.T) {
+func TestBillerEngine_Flows(t *testing.T) {
 	db := setupTestDB()
 	defer db.Close()
 
-	b, err := NewBillerEngine(BillerEngineConfig{
-		Storage:             db,
-		GenerateCurrentDate: func() time.Time { return time.Now() },
-
-		DefaultLoanDurationWeeks:       50,
-		DefaultInterestRatePercentage:  .1,
-		DeliquencyPaymentSkipThreshold: 2,
-	})
-	require.NoError(t, err)
-
+	curdate := time.Now()
+	getDate := func() time.Time { return curdate }
 	bid := xid.New().String()
-	billable, err := b.MakeBillable(InputMakeBillable{
-		BID:       bid,
-		Principal: 5_000_000,
+	eng, err := NewBillerEngine(BillerEngineConfig{
+		Storage:             db,
+		GenerateCurrentDate: func() time.Time { return getDate() },
+
+		DefaultLoanDurationWeeks:            50,
+		DefaultInterestRatePercentage:       .1,
+		PaymentSkipCountDeliquencyThreshold: 2,
 	})
 	require.NoError(t, err)
 
-	t.Run("ok", func(t *testing.T) {
-		// arrange
-		// act
-		out, err := b.MakePayment(billable.ID, InputMakePayment{Amount: 5_500_000 / 50, PaidAt: time.Now()})
-
-		// assert
-		assert.NotEmpty(t, out)
+	t.Run("initial_billable_state_okay", func(t *testing.T) {
+		_, err := eng.MakeBillable(InputMakeBillable{BID: bid, Principal: 5_000_000})
 		assert.NoError(t, err)
 
-		var count int
-		query := "SELECT COUNT(*) FROM payments;"
-		err = db.QueryRow(query).Scan(&count)
-
+		outstanding, err := eng.GetOutstanding(bid)
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
+		assert.Equal(t, 5_000_000, outstanding.Principal)
+		assert.Equal(t, 5_500_000, outstanding.Bill)
+
+		delinquency, err := eng.IsDelinquent(bid)
+		assert.NoError(t, err)
+		assert.Equal(t, false, delinquency.Delinquency)
 	})
 
-	t.Run("bad_input", func(t *testing.T) {
-		// arrange
-		// act
-		out, err := b.MakePayment(billable.ID, InputMakePayment{PaidAt: time.Now()})
+	t.Run("sequential_late_payment", func(t *testing.T) {
+		orig := getDate
+		defer func() { getDate = orig }()
 
-		// assert
-		assert.Empty(t, out)
-		assert.Error(t, err)
-
-		var count int
-		query := "SELECT COUNT(*) FROM payments;"
-		err = db.QueryRow(query).Scan(&count)
-
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 14) }
+		delinquency, err := eng.IsDelinquent(bid)
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
+		assert.Equal(t, true, delinquency.Delinquency)
 	})
 
-	t.Run("bad_amount", func(t *testing.T) {
-		// arrange
-		// act
-		out, err := b.MakePayment(billable.ID, InputMakePayment{Amount: 5_500_000/50 + 1, PaidAt: time.Now()})
+	t.Run("non_sequential_late_payment", func(t *testing.T) {
+		orig := getDate
+		defer func() { getDate = orig }()
 
-		// assert
-		assert.Empty(t, out)
-		assert.Error(t, err)
-
-		var count int
-		query := "SELECT COUNT(*) FROM payments;"
-		err = db.QueryRow(query).Scan(&count)
-
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 14) }
+		payment, err := eng.MakePayment(bid, InputMakePayment{Amount: 110_000, PaidAt: getDate()})
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
-	})
+		assert.Equal(t, 110_000, payment.Amount)
+		assert.Equal(t, 110_000, payment.AmountAccumulated)
 
-	t.Run("bad_billable", func(t *testing.T) {
-		// arrange
-		// act
-		out, err := b.MakePayment(billable.ID+"1", InputMakePayment{Amount: 5_500_000/50 + 1, PaidAt: time.Now()})
-
-		// assert
-		assert.Empty(t, out)
-		assert.Error(t, err)
-
-		var count int
-		query := "SELECT COUNT(*) FROM payments;"
-		err = db.QueryRow(query).Scan(&count)
-
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 14) }
+		delinquency, err := eng.IsDelinquent(bid)
 		assert.NoError(t, err)
-		assert.Equal(t, count, 1)
-	})
+		assert.Equal(t, false, delinquency.Delinquency)
 
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 28) }
+		delinquency, err = eng.IsDelinquent(bid)
+		assert.NoError(t, err)
+		assert.Equal(t, true, delinquency.Delinquency)
+
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 35) }
+		delinquency, err = eng.IsDelinquent(bid)
+		assert.NoError(t, err)
+		assert.Equal(t, true, delinquency.Delinquency)
+
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 35) }
+		payment, err = eng.MakePayment(bid, InputMakePayment{Amount: 110_000, PaidAt: getDate()})
+		assert.NoError(t, err)
+		assert.Equal(t, 110_000, payment.Amount)
+		assert.Equal(t, 220_000, payment.AmountAccumulated)
+
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 35) }
+		payment, err = eng.MakePayment(bid, InputMakePayment{Amount: 110_000, PaidAt: getDate()})
+		assert.NoError(t, err)
+		assert.Equal(t, 110_000, payment.Amount)
+		assert.Equal(t, 330_000, payment.AmountAccumulated)
+
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 35) }
+		payment, err = eng.MakePayment(bid, InputMakePayment{Amount: 110_000, PaidAt: getDate()})
+		assert.NoError(t, err)
+		assert.Equal(t, 110_000, payment.Amount)
+		assert.Equal(t, 440_000, payment.AmountAccumulated)
+
+		getDate = func() time.Time { return curdate.AddDate(0, 0, 35) }
+		delinquency, err = eng.IsDelinquent(bid)
+		assert.NoError(t, err)
+		assert.Equal(t, false, delinquency.Delinquency)
+	})
 }

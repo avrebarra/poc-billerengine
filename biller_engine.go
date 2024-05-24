@@ -16,9 +16,9 @@ type BillerEngineConfig struct {
 	Storage             *sql.DB          `validate:"required"`
 	GenerateCurrentDate func() time.Time `validate:"required"`
 
-	DefaultLoanDurationWeeks       int     `validate:"required"`
-	DefaultInterestRatePercentage  float64 `validate:"required"`
-	DeliquencyPaymentSkipThreshold int     `validate:"required"`
+	DefaultLoanDurationWeeks            int     `validate:"required"`
+	DefaultInterestRatePercentage       float64 `validate:"required"` // percentage in float
+	PaymentSkipCountDeliquencyThreshold int     `validate:"required"` // how many payments to skip until marked as delinquent
 }
 
 type BillerEngine struct {
@@ -91,7 +91,11 @@ func (b *BillerEngine) GetOutstanding(bID string) (out OutstandingDetails, err e
 	// find last payment for the billable
 	var amountPaid int
 	var paidAt time.Time
-	err = b.Conf.Storage.QueryRow("SELECT COALESCE(amount, 0), COALESCE(paid_at, '1970-01-01') FROM payments WHERE billable_id = ? ORDER BY paid_at DESC LIMIT 1", bID).Scan(&amountPaid, &paidAt)
+	err = b.Conf.Storage.QueryRow("SELECT amount_accumulated, paid_at FROM payments WHERE billable_id = ? ORDER BY created_at DESC, paid_at DESC LIMIT 1", bID).Scan(&amountPaid, &paidAt)
+	if errors.Is(err, sql.ErrNoRows) {
+		amountPaid = 0
+		err = nil
+	}
 	if err != nil {
 		err = fmt.Errorf("error fetching latest payment: %w", err)
 		return
@@ -133,12 +137,20 @@ func (b *BillerEngine) IsDelinquent(bID string) (out DelinquencyDetails, err err
 	}
 
 	var amountPaid int
-	err = b.Conf.Storage.QueryRow("SELECT COALESCE(amount_accumulated, 0) FROM payments WHERE billable_id = ? ORDER BY paid_at DESC LIMIT 1", bID).
+	err = b.Conf.Storage.QueryRow("SELECT amount_accumulated FROM payments WHERE billable_id = ? ORDER BY created_at DESC, paid_at DESC LIMIT 1", bID).
 		Scan(&amountPaid)
+	if errors.Is(err, sql.ErrNoRows) {
+		amountPaid = 0
+		err = nil
+	}
+	if err != nil {
+		err = fmt.Errorf("error fetching latest payment: %w", err)
+		return
+	}
 
 	billableAgeInWeek := getWeeksSinceDate(billable.CreatedAt)
 	expectedAggregatedPaidAmount := weeklyBillAmount * billableAgeInWeek
-	delinquencyThreshold := b.Conf.DeliquencyPaymentSkipThreshold
+	delinquencyThreshold := b.Conf.PaymentSkipCountDeliquencyThreshold
 
 	// build output
 	out.Delinquency = expectedAggregatedPaidAmount-amountPaid >= delinquencyThreshold*int(weeklyBillAmount)
@@ -168,13 +180,13 @@ func (b *BillerEngine) MakePayment(bID string, in InputMakePayment) (out Payment
 
 	// validate amount
 	if amount != (billable.Amount / billable.DurWeek) {
-		err = fmt.Errorf("wrong payment amount increment")
+		err = fmt.Errorf("wrong payment amount increment: expected %d", billable.Amount/billable.DurWeek)
 		return
 	}
 
 	// retrieve last payment aggregated amount
 	var amountPaid int
-	err = b.Conf.Storage.QueryRow("SELECT COALESCE(amount_accumulated, 0) FROM payments WHERE billable_id = ? ORDER BY paid_at DESC LIMIT 1", bID).Scan(&amountPaid)
+	err = b.Conf.Storage.QueryRow("SELECT amount_accumulated FROM payments WHERE billable_id = ? ORDER BY id DESC, paid_at DESC", bID).Scan(&amountPaid)
 	if errors.Is(err, sql.ErrNoRows) {
 		amountPaid = 0
 		err = nil

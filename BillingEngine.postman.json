@@ -1,0 +1,67 @@
+{
+  "info": {
+    "name": "BillingEngine",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "bruno",
+      "event": []
+    },
+    {
+      "name": "Ping",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "http://localhost:5001"
+      }
+    },
+    {
+      "name": "Make Billable",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "http://localhost:5001/billables",
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"billable_id\": \"ABC000002\",\n  \"amount_principal\": 5000000\n}",
+          "options": {
+            "raw": {
+              "language": "json"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Make Payment",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "http://localhost:5001/:billable_id/make-payment"
+      }
+    },
+    {
+      "name": "Check Delinquency",
+      "event": [],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": "http://localhost:5001/billables/ABC000002/check-delinquency"
+      }
+    },
+    {
+      "name": "Check Outstanding",
+      "event": [],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "http://localhost:5001/billables/ABC000002/outstandings"
+      }
+    }
+  ],
+  "variable": []
+}
