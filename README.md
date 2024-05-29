@@ -1,4 +1,4 @@
-# billingengine (POC)
+# poc/billerengine
 
 ## Quickstart
 
