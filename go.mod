@@ -1,4 +1,4 @@
-module github.com/amartha/billingengine
+module github.com/avrebarra/billingengine
 
 go 1.20
 
